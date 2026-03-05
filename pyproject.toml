@@ -5,9 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cuco"
 version = "0.0.1"
-description = "Automated Scientific Evolution"
+description = "An Agentic Framework for Compute and Communication Co-design"
 authors = [
-    {name = "Sakana AI", email = "robert@sakana.ai"}
+    {name = "Bodun Hu"},
+    {name = "Yoga Sri Varshan Varadharajan"},
+    {name = "Saurabh Agarwal"},
+    {name = "Aditya Akella"}
 ]
 readme = "README.md"
 license = {text = "MIT"}
