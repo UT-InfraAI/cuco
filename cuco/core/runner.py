@@ -135,7 +135,7 @@ class EvolutionRunner:
         self.db_config = db_config
         self.verbose = verbose
 
-        print_gradient_logo((255, 0, 0), (255, 255, 255))
+        print_gradient_logo((180, 50, 255), (50, 220, 255))
         if evo_config.results_dir is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.results_dir = f"results_{timestamp}"
