@@ -69,7 +69,7 @@ This is the core of the fast-path agent. It runs an LLM-driven feedback loop:
                     │  Run (mpirun)       │
                     └────────┬────────────┘
                              │
-                      pass  │ fail → diagnostic rerun ──► back to LLM
+                      pass   │ fail → diagnostic rerun ──► back to LLM
                              ▼
                     ┌─────────────────────┐
                     │  LLM Judge          │

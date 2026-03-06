@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎏 CucoEvolve: Open-Ended Program Evolution 🎏</title>
-    <link rel="icon" type="image/png" href="favicon.png">
+    <title>CUCo — Evolution Visualization</title>
+    <link rel="icon" type="image/png" href="cuco.png">
     <!-- Remove Highlight.js CSS -->
     <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/github.min.css"> -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css">
@@ -1152,7 +1152,7 @@
 <body>
     <div id="container">
         <div id="tree-panel" style="position: relative;">
-            <h2 class="panel-title"><span class="highlight">🎏 CucoEvolve</span>: Open-Ended Program Evolution 🎏</h2>
+            <h2 class="panel-title"><img src="cuco.png" alt="CUCo" style="height: 32px; vertical-align: middle; margin-right: 8px;">Evolution Visualization</h2>
             <div class="file-selector">
                 <label for="task-select">Task:</label>
                 <select id="task-select">
@@ -9078,7 +9078,7 @@ ${'='.repeat(80)}
             const yPadding = yRange * 0.1; // 10% padding
             
             const layout = {
-                title: 'Pareto Front of CucoEvolve Programs',
+                title: 'Pareto Front of CUCo Programs',
                 xaxis: { 
                     title: `${xMetric.name} (${xMetric.objective === 'min' ? 'Lower' : 'Higher'} is better →)`,
                     range: [Math.min(...correctX) - xPadding, Math.max(...correctX) + xPadding],

@@ -4,6 +4,10 @@ CUCo provides an interactive web UI and programmatic plotting utilities for expl
 
 ## Web UI
 
+<p align="center">
+  <img src="images/visuals.png" alt="CUCo Visualization UI" width="800">
+</p>
+
 ### Launching
 
 ```bash

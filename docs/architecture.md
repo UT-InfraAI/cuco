@@ -199,7 +199,7 @@ Assembles mutation prompts (`core/sampler.py`) by combining:
 3. Evolution loop (per generation):
    ProgramDatabase.sample() ──► PromptSampler.sample()
          │                              │
-         │ parent + inspirations         │ system + user prompt
+         │ parent + inspirations        │ system + user prompt
          │                              ▼
          │                        LLMClient.query()
          │                              │

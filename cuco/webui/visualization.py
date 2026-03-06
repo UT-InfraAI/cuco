@@ -549,7 +549,7 @@ class DatabaseRequestHandler(http.server.SimpleHTTPRequestHandler):
 <body>
     <div class="header-container">
         {f'<img src="{logo_data_uri}" alt="Cuco Logo" class="header-logo">' if logo_data_uri else ""}
-        <h1 class="header-title">CucoEvolve Meta-Scratchpad: \
+        <h1 class="header-title">CUCo Meta-Scratchpad: \
 {generation}</h1>
     </div>
     {html_content}
@@ -723,8 +723,8 @@ class DatabaseRequestHandler(http.server.SimpleHTTPRequestHandler):
     def _get_logo_base64(self) -> str:
         """Get the Cuco logo as base64 data URI."""
         try:
-            # Look for favicon.png in the main cuco package directory
-            logo_path = os.path.join(os.path.dirname(__file__), "favicon.png")
+            # Look for cuco.png in the webui directory
+            logo_path = os.path.join(os.path.dirname(__file__), "cuco.png")
             if os.path.exists(logo_path):
                 with open(logo_path, "rb") as f:
                     logo_data = f.read()
