@@ -1,10 +1,34 @@
 # Adding a New Workload
 
-This is the most important guide for external users. It walks through every step needed to adapt CUCo for a new CUDA kernel, using the included DeepSeek-V3 MoE example (`examples/ds_v3_moe/`) as a concrete reference.
+This guide walks through every step needed to adapt CUCo for a new CUDA kernel, using the included DeepSeek-V3 MoE example (`examples/ds_v3_moe/`) as a reusable template.
+
+## Quick Start
+
+The `ds_v3_moe` example is designed to be copied and reused without editing Python files. The workload-specific values (kernel filename, results directory) are all passed as CLI arguments.
+
+```bash
+# 1. Copy the template
+cp -r examples/ds_v3_moe examples/my_workload
+
+# 2. Add your seed kernel
+cp /path/to/my_kernel.cu examples/my_workload/
+
+# 3. Run evolution
+cd examples/my_workload
+python run_evo.py \
+    --init_program my_kernel.cu \
+    --results_dir results_my_workload \
+    --num_generations 18
+
+# Or run the host-to-device transformation
+python run_transform.py --source my_kernel.cu
+```
+
+Before this works, you need to ensure your seed kernel and environment are compatible (see the steps below).
 
 ## Overview
 
-A CUCo workload consists of five files in a directory:
+A CUCo workload directory contains:
 
 ```
 examples/my_workload/
@@ -12,10 +36,13 @@ examples/my_workload/
 ├── evaluate.py           # Build, run, correctness check, fitness scoring
 ├── run_evo.py            # Evolution launcher with prompt customization
 ├── run_transform.py      # Fast-path transformation launcher (optional)
-├── nccl_api_docs.py      # API documentation / reference material for LLM context (any file name works, but should be changed accordingly in run_evo.py)
+├── nccl_api_docs.py      # API documentation / reference material for LLM context
+├── .gitignore            # Excludes build artifacts, results, __pycache__
 └── build/
-    └── hostfile           # MPI hostfile for multi-node runs
+    └── hostfile          # MPI hostfile (only needed for multi-node runs)
 ```
+
+When copying from `ds_v3_moe`, all of these files come with the directory. You only need to add your `.cu` seed kernel.
 
 ## Step 1: Prepare the Seed Kernel
 
@@ -28,8 +55,12 @@ The seed kernel is the starting point for evolution. It can be either:
 
 1. The kernel must be a single `.cu` file that compiles with `nvcc`.
 2. It must run via `mpirun -np N` across the target GPU configuration.
-3. If using timing-based evaluation (the most common case), the kernel should time its critical section using CUDA event timers (`cudaEventRecord` / `cudaEventElapsedTime`) and print the result so `evaluate.py` can parse it (see Step 3).
-4. If using adding a correctness-based evaluation, the kernel should print a verification result (e.g., `"Verification: PASS"`) for `evaluate.py` to check.
+3. The kernel must print a timing line that `evaluate.py` can parse. The default regex expects:
+   ```
+   Time: X.XXXX ms
+   ```
+   If your kernel prints timing in a different format, either add a `printf("Time: %.4f ms\n", elapsed);` line, or update `TIME_PATTERN` in `evaluate.py` (see Step 3).
+4. The kernel must print `"Verification: PASS"` when results are correct.
 
 Requirements 3 and 4 are not hard constraints — the evaluation logic is entirely defined in `evaluate.py`, so you can implement any scoring scheme (timing, accuracy, throughput, memory usage, or a combination). The kernel just needs to produce output that your `evaluate.py` knows how to parse.
 
@@ -151,106 +182,119 @@ The included `examples/ds_v3_moe/nccl_api_docs.py` is one such file, providing N
   </tr>
 </table>
 
-**For a new workload** that also uses NCCL device APIs, you can typically reuse this file unchanged and extend it if needed. For workloads that use entirely different libraries or custom APIs, create your own docs file exporting string variables with the relevant documentation, then import and inject them into the prompt in `run_evo.py`.
+**For a new workload** that also uses NCCL device APIs, you can typically reuse this file unchanged (it's included when you copy the directory). For workloads that use entirely different libraries or custom APIs, create your own docs file exporting string variables with the relevant documentation, then import and inject them into the prompt in `run_evo.py`.
 
-## Step 3: Write evaluate.py
+## Step 3: Review and Adapt evaluate.py
 
-The evaluation script is the bridge between CUCo and your hardware. It must:
+`evaluate.py` is the bridge between CUCo and your hardware. The framework calls it automatically for every candidate program:
 
-1. Accept `--program_path` and `--results_dir` CLI arguments
-2. Build the candidate `.cu` file
-3. Run the compiled binary
-4. Check correctness
-5. Parse timing
-6. Write `metrics.json` and `correct.json`
-
-### CLI Contract
-
-```python
-# CUCo calls: python evaluate.py --program_path gen_5/main.cu --results_dir gen_5/results
-parser = argparse.ArgumentParser()
-parser.add_argument("--program_path", required=True)
-parser.add_argument("--results_dir", required=True)
+```bash
+python evaluate.py --program_path gen_5/main.cu --results_dir gen_5/results
 ```
 
-### Build Command
+It handles the full pipeline: **build** the `.cu` file, **run** the binary, **check correctness**, **parse timing**, and **write** `metrics.json` + `correct.json`.
 
-Configure for your toolchain:
+The source and binary filenames are derived automatically from `--program_path` — you do not need to change them per workload. However, you may need to review and adapt the following sections for your environment.
+
+### Build Toolchain Paths
+
+If your CUDA, NCCL, or MPI installations are in different locations, update these constants at the top of `evaluate.py`:
 
 ```python
 NVCC = "/usr/local/cuda-13.1/bin/nvcc"
 NCCL_INCLUDE = "/usr/local/nccl_2.28.9-1+cuda13.0_x86_64/include"
 NCCL_STATIC_LIB = "/usr/local/nccl_2.28.9-1+cuda13.0_x86_64/lib/libnccl_static.a"
-
-def get_build_command(work_dir):
-    return [
-        NVCC, "-o", str(work_dir / BINARY_NAME), str(work_dir / SOURCE_NAME),
-        f"-I{NCCL_INCLUDE}", NCCL_STATIC_LIB,
-        "-rdc=true", "-arch=sm_80",
-        f"-L{CUDA_LIB64}", "-lcudart", "-lcudadevrt", "-lpthread",
-        f"-I{MPI_INCLUDE}", f"-I{MPI_INCLUDE_OPENMPI}",
-        f"-L{MPI_LIB}", "-lmpi",
-    ]
+CUDA_LIB64 = "/usr/local/cuda-13.1/lib64"
+MPI_INCLUDE = "/usr/lib/x86_64-linux-gnu/openmpi/include"
+MPI_INCLUDE_OPENMPI = "/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi"
+MPI_LIB = "/usr/lib/x86_64-linux-gnu/openmpi/lib"
 ```
 
-Key flags:
+Also update the `-arch` flag in `get_build_command` to match your GPU architecture:
+
+| Flag | GPU |
+|---|---|
+| `-arch=sm_80` | A100 (Ampere) |
+| `-arch=sm_90` | H100 (Hopper) |
+| `-arch=sm_100` | B200 (Blackwell) |
+
+Key build flags:
 - `-rdc=true` — Required for device-side NCCL (relocatable device code)
-- `-arch=sm_80` — Match your GPU architecture (sm_80 for A100)
-- Static NCCL linking is required for device-initiated APIs
+- Static NCCL linking (`libnccl_static.a`) is required for device-initiated APIs (GIN, LSA)
 
-### Run Command
+### Run Configuration
 
-```python
-def get_run_command(work_dir):
-    cmd = [
-        "mpirun", "--hostfile", str(work_dir / "build" / "hostfile"),
-        "-np", str(MPI_NP), "--map-by", "node",
-        "-x", "LD_LIBRARY_PATH",
-        "-x", "CUDA_VISIBLE_DEVICES=0",
-        "-x", "NCCL_GIN_ENABLE=1",          # Enable GIN
-        "-x", "NCCL_SOCKET_IFNAME=enp75s0f1np1",  # Network interface
-        "-x", "NCCL_IB_HCA=mlx5_1",         # RDMA device
-        # ... more environment variables
-    ]
-    cmd.append(str(work_dir / BINARY_NAME))
-    return cmd
-```
-
-Adjust `NCCL_SOCKET_IFNAME`, `NCCL_IB_HCA`, and `NCCL_IB_GID_INDEX` for your network configuration.
-
-### Fitness Function
-
-The evolutionary search requires a single scalar `combined_score` (higher is better) for parent selection, archive ranking, and progress tracking. However, you can track **multiple metrics** alongside it:
-
-- **`public`** — a free-form dictionary of metrics that are shown to the LLM in mutation prompts. All key-value pairs are formatted and injected into the context, so the LLM can reason about multiple dimensions (latency, throughput, memory, etc.).
-- **`private`** — a free-form dictionary stored in the database but not exposed to the LLM. Use this for diagnostics or internal bookkeeping.
-
-The simplest case maps a single metric to the score:
+`MPI_NP` controls how many ranks `mpirun` launches. It must match the `NUM_RANKS` in your seed kernel:
 
 ```python
-def score_from_time_ms(time_ms: float) -> float:
-    return 10000.0 / (1.0 + time_ms)
+MPI_NP = 2
 ```
 
-For multi-objective optimization, you can combine several metrics into `combined_score` using a weighted sum, Pareto ranking, or any custom aggregation — the search only compares the final scalar. Individual sub-metrics should go in `public` so the LLM can see the breakdown:
+### Network and Topology
+
+The `_run_binary` function in `evaluate.py` constructs the `mpirun` command. The defaults are configured for **inter-node InfiniBand** across two servers:
 
 ```python
-def compute_score(time_ms, memory_mb, accuracy):
-    latency_score = 10000.0 / (1.0 + time_ms)
-    memory_score = 1000.0 / (1.0 + memory_mb)
-    return 0.7 * latency_score + 0.2 * memory_score + 0.1 * accuracy
+"mpirun", "--hostfile", HOSTFILE,
+"-np", str(MPI_NP),
+"--map-by", "node",
+"-x", "NCCL_SOCKET_IFNAME=enp75s0f1np1",
+"-x", "NCCL_IB_HCA=mlx5_1",
+"-x", "NCCL_IB_GID_INDEX=3",
+"--mca", "btl_tcp_if_include", "enp75s0f1np1",
+"--mca", "oob_tcp_if_include", "enp75s0f1np1",
 ```
 
-### Timing Parsing
+Adapt these for your setup:
 
-Match your kernel's output format:
+<table>
+  <tr>
+    <th>Setup</th>
+    <th>What to change</th>
+  </tr>
+  <tr>
+    <td><strong>Single-node</strong> (2 GPUs, same machine)</td>
+    <td>Remove <code>--hostfile</code>, <code>--map-by node</code>, and all <code>NCCL_SOCKET_IFNAME</code> / <code>NCCL_IB_*</code> / <code>--mca</code> flags. Just use <code>mpirun -np 2</code>. No <code>build/hostfile</code> needed.</td>
+  </tr>
+  <tr>
+    <td><strong>Different InfiniBand device</strong></td>
+    <td>Change <code>NCCL_IB_HCA</code> (e.g., <code>mlx5_0</code>) and <code>NCCL_IB_GID_INDEX</code>.</td>
+  </tr>
+  <tr>
+    <td><strong>Different network interface</strong></td>
+    <td>Change <code>NCCL_SOCKET_IFNAME</code> and the <code>--mca</code> interface names. Run <code>ip addr</code> to find your interface name.</td>
+  </tr>
+  <tr>
+    <td><strong>Different nodes</strong></td>
+    <td>Update <code>build/hostfile</code> with your node hostnames (e.g., <code>node1 slots=1</code>).</td>
+  </tr>
+</table>
+
+The same network settings appear in `run_transform.py` (in the `TransformConfig` and agent prompt). If you change them in `evaluate.py`, update `run_transform.py` to match.
+
+### Timing and Verification Patterns
+
+`evaluate.py` parses program output using these regexes:
 
 ```python
 TIME_PATTERN = re.compile(r"^Time:\s*([\d.]+)\s*ms", re.MULTILINE)
 VERIFICATION_PASS_STR = "Verification: PASS"
 ```
 
-For multi-rank workloads with unequal token counts, we suggest using token-weighted averaging:
+**Your kernel must print output that matches these patterns.** The simplest approach is to add a matching `printf` to your kernel:
+
+```c
+printf("Time: %.4f ms\n", elapsed_ms);
+printf("Verification: PASS\n");
+```
+
+If your kernel prints timing in a different format, update the regex instead. For example, if your kernel prints `"Elapsed: 5.23 ms"`:
+
+```python
+TIME_PATTERN = re.compile(r"^Elapsed:\s*([\d.]+)\s*ms", re.MULTILINE)
+```
+
+For multi-rank workloads with unequal token counts, the evaluator also supports token-weighted averaging via:
 
 ```python
 RANK_HEADER_PATTERN = re.compile(
@@ -259,9 +303,27 @@ RANK_HEADER_PATTERN = re.compile(
 )
 ```
 
+### Scoring Function
+
+The default fitness function maps lower time to higher score:
+
+```python
+def score_from_time_ms(time_ms: float) -> float:
+    return 10000.0 / (1.0 + time_ms)
+```
+
+This works for most latency-focused workloads. For multi-objective optimization (e.g., balancing latency and memory), modify this function and add sub-metrics to the `public` dict in `metrics.json` so the LLM can see the breakdown:
+
+```python
+def compute_score(time_ms, memory_mb, accuracy):
+    latency_score = 10000.0 / (1.0 + time_ms)
+    memory_score = 1000.0 / (1.0 + memory_mb)
+    return 0.7 * latency_score + 0.2 * memory_score + 0.1 * accuracy
+```
+
 ### Output Files
 
-Write exactly these two files:
+`evaluate.py` writes exactly two files:
 
 **metrics.json:**
 ```json
@@ -322,11 +384,27 @@ transformer = HostToDeviceTransformer(config)
 result = transformer.transform("my_kernel.cu", work_dir="_transform_work")
 ```
 
+When copying from `ds_v3_moe`, the `run_transform.py` is already included. Pass your kernel via CLI:
+
+```bash
+python run_transform.py --source my_kernel.cu
+```
+
 See [Fast-Path Agent](fast-path-agent.md) for details on the two-stage transformation.
 
 ## Step 5: Write run_evo.py
 
-This is the main evolution launcher. Key decisions:
+This is the main evolution launcher. When copying from `ds_v3_moe`, pass workload-specific values via CLI:
+
+```bash
+python run_evo.py \
+    --init_program my_kernel.cu \
+    --results_dir results_my_workload \
+    --num_generations 18 \
+    --api gin
+```
+
+Key decisions if you need to customize beyond CLI arguments:
 
 ### Prompt Customization
 
@@ -415,7 +493,20 @@ runner.run()
 
 See [Configuration Reference](configuration.md) for all parameters.
 
-## Step 6: Test the Pipeline
+## Step 6: Set Up Credentials
+
+CUCo requires LLM API credentials for evolution, feedback, and transformation. Create a `.env` file in the CUCo root directory:
+
+```bash
+# For AWS Bedrock (default)
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_REGION_NAME=us-east-1
+```
+
+The `.env` file is loaded automatically by `evaluate.py`, `run_evo.py`, and `run_transform.py`.
+
+## Step 7: Test the Pipeline
 
 Before running a full evolution, verify each component:
 
@@ -425,7 +516,9 @@ Before running a full evolution, verify each component:
 cd examples/my_workload
 # Build
 nvcc -o my_kernel my_kernel.cu -I... -rdc=true -arch=sm_80 ...
-# Run
+# Run (single-node)
+CUDA_VISIBLE_DEVICES=0,1 mpirun -np 2 ./my_kernel
+# Run (multi-node)
 mpirun --hostfile build/hostfile -np 2 ./my_kernel
 # Should print: "Verification: PASS" and "Time: X.XXXX ms"
 ```
@@ -435,17 +528,17 @@ mpirun --hostfile build/hostfile -np 2 ./my_kernel
 ```bash
 mkdir -p test_results
 python evaluate.py --program_path my_kernel.cu --results_dir test_results
-cat test_results/metrics.json
-cat test_results/correct.json
+cat test_results/metrics.json    # Should show combined_score > 0
+cat test_results/correct.json    # Should show "correct": true
 ```
 
 ### 3. Run a short evolution
 
 ```bash
-python run_evo.py --num_generations=3
+python run_evo.py --init_program my_kernel.cu --results_dir results_test --num_generations 3
 ```
 
-Check `results_my_workload/gen_0/` for the first generation's output.
+Check `results_test/gen_0/` for the first generation's output.
 
 ## Checklist
 
@@ -453,27 +546,33 @@ Before running a full evolution, verify:
 
 - [ ] Seed kernel compiles with your nvcc command
 - [ ] Seed kernel runs correctly via mpirun on your target GPUs
-- [ ] Seed kernel prints timing and verification strings
-- [ ] `evaluate.py` correctly parses timing and writes metrics.json / correct.json
+- [ ] Seed kernel prints `Time: X.XXXX ms` (or you've updated `TIME_PATTERN`)
+- [ ] Seed kernel prints `Verification: PASS`
+- [ ] `evaluate.py` build paths match your CUDA/NCCL/MPI installation
+- [ ] `evaluate.py` network flags match your topology (or removed for single-node)
+- [ ] `evaluate.py` correctly parses timing and writes `metrics.json` / `correct.json`
 - [ ] EVOLVE-BLOCK markers are placed around mutable regions only
 - [ ] Frozen regions (init, main, verification) are outside EVOLVE-BLOCK
 - [ ] `.env` file has valid LLM API credentials
-- [ ] Hostfile is configured for your GPU topology
-- [ ] NCCL environment variables match your network (SOCKET_IFNAME, IB_HCA, etc.)
+- [ ] Hostfile is configured for your GPU topology (multi-node only)
 - [ ] `nccl_api_docs.py` is present and importable
 
 ## Common Pitfalls
 
-1. **Missing `-rdc=true`**: Device-side NCCL requires relocatable device code. Without it, linking fails silently or produces wrong results.
+1. **Timing format mismatch**: The default `evaluate.py` regex expects `^Time:\s*([\d.]+)\s*ms`. If your kernel prints timing differently (e.g., `"Elapsed: 5.23 ms"` or `"Total Pipeline Time: 3.14 ms"`), the evaluator will silently fail to parse it and report score 0. Either add a matching `printf` to your kernel or update `TIME_PATTERN`.
 
-2. **Wrong NCCL version**: Device-initiated APIs (GIN, LSA) require NCCL >= 2.28.9. Older versions will compile but crash at runtime.
+2. **Missing `-rdc=true`**: Device-side NCCL requires relocatable device code. Without it, linking fails silently or produces wrong results.
 
-3. **Timing includes warmup**: Always include a warmup section before the timed region. The first GIN/NCCL call triggers lazy RDMA initialization (10-50 ms).
+3. **Wrong NCCL version**: Device-initiated APIs (GIN, LSA) require NCCL >= 2.28.9. Older versions will compile but crash at runtime.
 
-4. **EVOLVE-BLOCK too broad**: If the entire file is mutable, the LLM may break initialization or verification code. Keep EVOLVE-BLOCKs focused on kernels and pipeline logic.
+4. **Timing includes warmup**: Always include a warmup section before the timed region. The first GIN/NCCL call triggers lazy RDMA initialization (10-50 ms).
 
-5. **EVOLVE-BLOCK too narrow**: If only a single kernel is mutable, the LLM cannot explore architectural changes (e.g., switching from sequential to pipelined execution).
+5. **EVOLVE-BLOCK too broad**: If the entire file is mutable, the LLM may break initialization or verification code. Keep EVOLVE-BLOCKs focused on kernels and pipeline logic.
 
-6. **Network configuration**: Inter-node GIN requires correct `NCCL_SOCKET_IFNAME`, `NCCL_IB_HCA`, and `NCCL_IB_GID_INDEX`. Wrong values cause silent hangs.
+6. **EVOLVE-BLOCK too narrow**: If only a single kernel is mutable, the LLM cannot explore architectural changes (e.g., switching from sequential to pipelined execution).
 
-7. **Static NCCL linking**: Device APIs require static linking (`libnccl_static.a`), not dynamic (`-lnccl`).
+7. **Network configuration**: Inter-node GIN requires correct `NCCL_SOCKET_IFNAME`, `NCCL_IB_HCA`, and `NCCL_IB_GID_INDEX`. Wrong values cause silent hangs.
+
+8. **Static NCCL linking**: Device APIs require static linking (`libnccl_static.a`), not dynamic (`-lnccl`).
+
+9. **Single-node vs multi-node mismatch**: If running on a single node, make sure you've removed the `--hostfile`, `--map-by node`, and InfiniBand flags from `_run_binary` in `evaluate.py`. Leaving them in can cause `mpirun` failures or connection errors.

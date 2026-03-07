@@ -43,8 +43,6 @@ CUDA_LIB64 = "/usr/local/cuda-13.1/lib64"
 MPI_INCLUDE = "/usr/lib/x86_64-linux-gnu/openmpi/include"
 MPI_INCLUDE_OPENMPI = "/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi"
 MPI_LIB = "/usr/lib/x86_64-linux-gnu/openmpi/lib"
-SOURCE_NAME = "ds_v3_moe.cu"
-BINARY_NAME = "ds_v3_moe"
 MPI_NP = 2
 
 NUM_RUNS = 2
@@ -284,9 +282,9 @@ def _call_anthropic(model_name: str, system_prompt: str, user_msg: str, max_toke
 # Standard evaluation functions
 # ---------------------------------------------------------------------------
 
-def get_build_command(work_dir: Path) -> list[str]:
+def get_build_command(work_dir: Path, source_name: str = "main.cu", binary_name: str = "main") -> list[str]:
     return [
-        NVCC, "-o", BINARY_NAME, str(work_dir / SOURCE_NAME),
+        NVCC, "-o", binary_name, str(work_dir / source_name),
         f"-I{NCCL_INCLUDE}", NCCL_STATIC_LIB,
         "-rdc=true", "-arch=sm_80",
         f"-L{CUDA_LIB64}", "-lcudart", "-lcudadevrt", "-lpthread",
@@ -607,8 +605,10 @@ def main(program_path: str, results_dir: str) -> None:
         return
 
     work_dir = program_file.parent
-    source_path = work_dir / SOURCE_NAME
-    binary_path = work_dir / BINARY_NAME
+    source_name = program_file.name
+    binary_name = program_file.stem
+    source_path = work_dir / source_name
+    binary_path = work_dir / binary_name
 
     metrics: Dict = {}
     correct = False
@@ -627,7 +627,7 @@ def main(program_path: str, results_dir: str) -> None:
         source_path.write_text(build_code, encoding="utf-8")
 
         # Build
-        build_cmd = get_build_command(work_dir)
+        build_cmd = get_build_command(work_dir, source_name, binary_name)
         build_log = results_path / "build.log"
         start = time.perf_counter()
         result = subprocess.run(build_cmd, cwd=str(work_dir), capture_output=True, text=True)
