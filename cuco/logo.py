@@ -9,7 +9,7 @@ cuco_ascii = """
      ╚██████╗╚██████╔╝╚█████╔╝╚█████╔╝
      ░╚═════╝░╚═════╝░░╚════╝░░╚════╝
 
-     Evolutionary CUDA Kernel Optimization
+     Evolutionary Compute and Communication Co-design
 """
 
 
