@@ -50,6 +50,13 @@ dependencies = [
     "aiofiles",
     "google-generativeai",
     "pyyaml",
+    "cuda-python>=12.6",
+    "cuda-core>=0.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "torch>=2.9.1",
 ]
 
 [tool.setuptools]
