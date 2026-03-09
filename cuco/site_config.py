@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -186,7 +187,17 @@ def interactive_setup() -> Dict[str, Any]:
         cfg["cuda_visible_devices"] = visible
 
         nodes = _prompt("    Number of nodes [2]") or "2"
-        cfg["default_np"] = int(nodes) * cfg["gpus_per_node"]
+        cfg["num_nodes"] = int(nodes)
+        cfg["default_np"] = cfg["num_nodes"] * cfg["gpus_per_node"]
+
+        print("\n  Enter hostname for each node:\n")
+        node_hostnames = []
+        for i in range(1, cfg["num_nodes"] + 1):
+            default = socket.gethostname() if i == 1 else ""
+            hint = f" [{default}]" if default else ""
+            name = _prompt(f"    Node {i}{hint}") or default
+            node_hostnames.append(name)
+        cfg["node_hostnames"] = node_hostnames
 
         print("\n  Enter network settings (leave blank to skip):\n")
         cfg["network"]["nccl_socket_ifname"] = _prompt("    NCCL_SOCKET_IFNAME") or None

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import socket
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -82,6 +83,45 @@ def _patch_run_transform(text: str, workload_name: str) -> str:
     return text
 
 
+# ── hostfile helpers ──────────────────────────────────────────────────────
+
+def _generate_hostfile(
+    num_nodes: int,
+    gpus_per_node: int,
+    node_hostnames: Optional[list] = None,
+) -> str:
+    """Generate a hostfile from configured hostnames, or placeholders as fallback."""
+    if node_hostnames and len(node_hostnames) == num_nodes:
+        lines = [f"{h} slots={gpus_per_node}" for h in node_hostnames]
+    else:
+        hostname = socket.gethostname()
+        lines = [f"{hostname} slots={gpus_per_node}"]
+        for i in range(2, num_nodes + 1):
+            lines.append(f"<node{i}-hostname> slots={gpus_per_node}")
+        if num_nodes > 1:
+            lines.append(
+                "# Replace <node*-hostname> placeholders with actual hostnames"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def _warn_hostfile_slots(hostfile: Path, expected_gpus: int) -> None:
+    """Print a warning if any slots= value in the hostfile doesn't match gpus_per_node."""
+    text = hostfile.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.search(r"slots=(\d+)", line)
+        if match and int(match.group(1)) != expected_gpus:
+            print(
+                f"\n  \033[93mWARNING: Hostfile has slots={match.group(1)} "
+                f"but site config says gpus_per_node={expected_gpus}.\033[0m"
+                f"\n  Check {hostfile} and update if needed.\n"
+            )
+            return
+
+
 # ── main scaffold ─────────────────────────────────────────────────────────
 
 def scaffold(
@@ -147,14 +187,15 @@ def scaffold(
         build_dir.mkdir(exist_ok=True)
         hostfile_src = site_cfg.get("hostfile")
         hostfile_dst = build_dir / "hostfile"
+        gpus_per_node = site_cfg.get("gpus_per_node", 1)
         if hostfile_src and Path(hostfile_src).exists():
             shutil.copy2(hostfile_src, hostfile_dst)
+            _warn_hostfile_slots(hostfile_dst, gpus_per_node)
         else:
+            num_nodes = site_cfg.get("num_nodes", 2)
+            node_hostnames = site_cfg.get("node_hostnames")
             hostfile_dst.write_text(
-                "# MPI hostfile — one line per node: <hostname> slots=<gpus>\n"
-                "# Example:\n"
-                "#   node1 slots=1\n"
-                "#   node2 slots=1\n",
+                _generate_hostfile(num_nodes, gpus_per_node, node_hostnames),
                 encoding="utf-8",
             )
 

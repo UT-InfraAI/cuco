@@ -61,8 +61,11 @@ Examples:
 
     workload_name = args.name or seed_path.stem
 
-    # Determine project root (where workloads/ lives)
-    project_root = Path(__file__).resolve().parent.parent
+    # Determine project root (where workloads/ lives).
+    # Use the cuco package location rather than __file__, since __file__
+    # points to .venv/bin/ when running as an installed CLI script.
+    import cuco
+    project_root = Path(cuco.__file__).resolve().parent.parent
     if args.dir:
         output_dir = Path(args.dir).resolve()
     else:
