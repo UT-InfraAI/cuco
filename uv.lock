@@ -626,6 +626,7 @@ dependencies = [
     { name = "boto3" },
     { name = "cuda-core" },
     { name = "cuda-python" },
+    { name = "cython" },
     { name = "dill" },
     { name = "google-generativeai" },
     { name = "hydra-core" },
@@ -633,6 +634,7 @@ dependencies = [
     { name = "markdown" },
     { name = "matplotlib" },
     { name = "moviepy" },
+    { name = "nccl4py", extra = ["cu13"] },
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "networkx", version = "3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -647,17 +649,8 @@ dependencies = [
     { name = "requests" },
     { name = "scikit-learn" },
     { name = "seaborn" },
-    { name = "unidiff" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "nccl4py", extra = ["cu13"] },
     { name = "torch" },
-]
-nccl = [
-    { name = "cython" },
-    { name = "nccl4py", extra = ["cu13"] },
+    { name = "unidiff" },
 ]
 
 [package.dev-dependencies]
@@ -677,7 +670,7 @@ requires-dist = [
     { name = "boto3" },
     { name = "cuda-core", specifier = ">=0.6.0" },
     { name = "cuda-python", specifier = ">=12.6" },
-    { name = "cython", marker = "extra == 'nccl'", specifier = ">=3.0" },
+    { name = "cython", specifier = ">=3.0" },
     { name = "dill" },
     { name = "google-generativeai" },
     { name = "hydra-core", specifier = "==1.3.2" },
@@ -685,8 +678,7 @@ requires-dist = [
     { name = "markdown" },
     { name = "matplotlib" },
     { name = "moviepy" },
-    { name = "nccl4py", extras = ["cu13"], marker = "extra == 'dev'" },
-    { name = "nccl4py", extras = ["cu13"], marker = "extra == 'nccl'" },
+    { name = "nccl4py", extras = ["cu13"] },
     { name = "networkx" },
     { name = "numpy" },
     { name = "openai" },
@@ -699,10 +691,9 @@ requires-dist = [
     { name = "requests" },
     { name = "scikit-learn" },
     { name = "seaborn" },
-    { name = "torch", marker = "extra == 'dev'", specifier = ">=2.9.1" },
+    { name = "torch", specifier = ">=2.9.1" },
     { name = "unidiff" },
 ]
-provides-extras = ["dev", "nccl"]
 
 [package.metadata.requires-dev]
 dev = [
