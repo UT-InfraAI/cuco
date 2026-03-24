@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "gemm_allgather",
+  "seed_file": "gemm_allgather.py",
+  "language": "python",
+  "task_description_file": "task_description.md",
+  "api_docs_file": "api_docs.md",
+  "num_generations": 60,
+  "explore_fraction": 0.4,
+  "evaluator": {
+    "type": "subprocess_stdout_v1",
+    "config": {
+      "cmd": ["{python_executable}", "{program_path}"],
+      "verify_contains": "Verification: PASS",
+      "time_pattern": "Time:\\s*([0-9.]+)\\s*ms",
+      "timeout_sec": 300,
+      "num_runs": 2,
+      "score_mode": "inverse_time_ms"
+    }
+  }
+}
